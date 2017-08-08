@@ -2,66 +2,94 @@
 using System.Net;
 using System.Web.Http;
 using refactor_me.Models;
+using RefactorMe.Core.External.Repositories;
+using RefactorMe.Infrastructure.Repositories;
 
-namespace refactor_me.Controllers
+namespace RefactorMe.Controllers
 {
     [RoutePrefix("products")]
     public class ProductsController : ApiController
     {
-        [Route]
-        [HttpGet]
-        public Products GetAll()
+        private IProductRepository productRepository;
+        public IProductRepository ProductRepository
         {
-            return new Products();
+            get
+            {
+                if (productRepository == null)
+                {
+                    productRepository = new ProductRepository();
+                }
+                return productRepository;
+            }
         }
 
         [Route]
         [HttpGet]
-        public Products SearchByName(string name)
+        public object GetAll()
         {
-            return new Products(name);
+            return new { Items = ProductRepository.GetAll() };
+        }
+
+        [Route]
+        [HttpGet]
+        public object SearchByName(string name)
+        {
+            return new { Items = ProductRepository.GetByName(name) };
         }
 
         [Route("{id}")]
         [HttpGet]
-        public Product GetProduct(Guid id)
+        public object GetProduct(Guid id)
         {
-            var product = new Product(id);
-            if (product.IsNew)
-                throw new HttpResponseException(HttpStatusCode.NotFound);
+            Core.DomainModels.Product product = ProductRepository.GetById(id);
+            if (product == null)
+                return NotFound();
 
             return product;
         }
 
         [Route]
         [HttpPost]
-        public void Create(Product product)
+        public IHttpActionResult Create(Core.DomainModels.Product product)
         {
-            product.Save();
+            ProductRepository.Create(product);
+
+            return Created("", product);
         }
 
         [Route("{id}")]
         [HttpPut]
-        public void Update(Guid id, Product product)
+        public IHttpActionResult Update(Guid id, Core.DomainModels.Product product)
         {
-            var orig = new Product(id)
+            Core.DomainModels.Product existingProduct = ProductRepository.GetById(id);
+            if(existingProduct == null)
             {
-                Name = product.Name,
-                Description = product.Description,
-                Price = product.Price,
-                DeliveryPrice = product.DeliveryPrice
-            };
+                return BadRequest();
+            }
 
-            if (!orig.IsNew)
-                orig.Save();
+            existingProduct.Name = product.Name;
+            existingProduct.Description = product.Description;
+            existingProduct.Price = product.Price;
+            existingProduct.DeliveryPrice = product.DeliveryPrice;
+
+            ProductRepository.Update(existingProduct);
+
+            return Ok();
         }
 
         [Route("{id}")]
         [HttpDelete]
-        public void Delete(Guid id)
+        public IHttpActionResult Delete(Guid id)
         {
-            var product = new Product(id);
-            product.Delete();
+            Core.DomainModels.Product existingProduct = ProductRepository.GetById(id);
+            if (existingProduct == null)
+            {
+                return BadRequest();
+            }
+
+            ProductRepository.Delete(id);
+
+            return StatusCode(HttpStatusCode.NoContent);
         }
 
         [Route("{productId}/options")]
