@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 
 namespace RefactorMe.Core.DomainModels
 {
@@ -11,6 +12,11 @@ namespace RefactorMe.Core.DomainModels
         public string Name { get; set; }
 
         public string Description { get; set; }
+        
+        [JsonIgnore]
+        public bool IsDeleted { get; private set; }
+
+        public ProductOption() { }
 
         public ProductOption(Product product)
         {
@@ -18,6 +24,11 @@ namespace RefactorMe.Core.DomainModels
 
             Id = Guid.NewGuid();
             ProductId = product.Id;
+        }
+
+        public void MarkDeleted()
+        {
+            IsDeleted = true;
         }
     }
 }

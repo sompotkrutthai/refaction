@@ -8,21 +8,32 @@ using System.Reflection;
 
 namespace RefactorMe.Infrastructure.Repositories
 {
+    //TODO: use Entity Framework instead
     public class ProductRepository : IProductRepository
     {
         public IEnumerable<Product> GetAll()
         {
-            return GetByQuery($"select * from product");
+            return GetProductsByQuery($"select * from product");
         }
 
         public IEnumerable<Product> GetByName(string name)
         {
-            return GetByQuery($"select * from product where lower(name) like '%{name.ToLower()}%'");
+            return GetProductsByQuery($"select * from product where lower(name) like '%{name.ToLower()}%'");
         }
 
-        public Product GetById(Guid id)
+        public Product GetById(Guid id, bool includeOptions = false)
         {
-            return GetByQuery($"select * from product where id = '{id}'").SingleOrDefault();
+            Product product = GetProductsByQuery($"select * from product where id = '{id}'").SingleOrDefault();
+            if(product != null && includeOptions)
+            {
+                IEnumerable<ProductOption> productOptions = GetProductOptionsByQuery($"select * from productoption where productid = '{product.Id}'");
+                if(productOptions.Count() > 0)
+                {
+                    productOptions.ToList().ForEach(x => product.AddOption(x));
+                }
+            }
+
+            return product;
         }
 
         public void Create(Product product)
@@ -43,6 +54,51 @@ namespace RefactorMe.Infrastructure.Repositories
                                $"where id = '{product.Id}'";
 
             ExecuteCommand(statement);
+
+            ManageProductOptions(product);
+        }
+
+        private void ManageProductOptions(Product product)
+        {
+            if (product.Options != null && product.Options.Any())
+            {
+                foreach (ProductOption option in product.Options)
+                {
+                    string statement = null;
+                    //delete option, if option has set IsDeleted = true
+                    if (option.IsDeleted)
+                    {
+                        statement = $"delete from productoption where id = '{option.Id}'";
+                    }
+                    else
+                    {
+                        IEnumerable<ProductOption> options = GetProductOptionsByQuery($"select * from productoption where id = '{option.Id}'");
+                        if (options == null || (options.Count() == 0))
+                        {
+                            //if it's not exists, insert
+                            statement = $"insert into productoption (id, productid, name, description) " +
+                                        $"values ('{option.Id}', '{option.ProductId}', '{option.Name}', '{option.Description}')";
+                        }
+                        else
+                        {
+                            //if it's exists and name/description are being changed, update it
+                            ProductOption existingOption = options.Single();
+                            if ((option.Name != null && !option.Name.Equals(existingOption.Name))
+                                || option.Description != null && !option.Description.Equals(existingOption.Description))
+                            {
+                                string optionName = option.Name != null && !option.Name.Equals(existingOption.Name) ? option.Name : existingOption.Name;
+                                string optionDescription = option.Description != null && !option.Description.Equals(existingOption.Description) ? option.Description : existingOption.Description;
+                                statement = $"update productoption set name = '{optionName}', description = '{optionDescription}' where id = '{option.Id}'";
+                            }
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(statement))
+                    {
+                        ExecuteCommand(statement);
+                    }
+                }
+            }
         }
 
         public void Delete(Guid id)
@@ -52,7 +108,7 @@ namespace RefactorMe.Infrastructure.Repositories
             ExecuteCommand(statement);
         }
 
-        private IEnumerable<Product> GetByQuery(string query)
+        private IEnumerable<Product> GetProductsByQuery(string query)
         {
             IList<Product> items = new List<Product>();
             using (var conn = Helpers.NewConnection())
@@ -76,6 +132,38 @@ namespace RefactorMe.Infrastructure.Repositories
                         idProperty.SetValue(product, Guid.Parse(rdr["id"].ToString()));
 
                         items.Add(product);
+                    }
+                }
+            }
+
+            return items;
+        }
+
+        private IEnumerable<ProductOption> GetProductOptionsByQuery(string query)
+        {
+            IList<ProductOption> items = new List<ProductOption>();
+            using (var conn = Helpers.NewConnection())
+            {
+                using (var cmd = new SqlCommand(query, conn))
+                {
+                    conn.Open();
+
+                    var rdr = cmd.ExecuteReader();
+                    while (rdr.Read())
+                    {
+                        ProductOption productOption = new ProductOption()
+                        {
+                            Name = rdr["Name"].ToString(),
+                            Description = (DBNull.Value == rdr["Description"]) ? null : rdr["Description"].ToString()
+                        };
+
+                        PropertyInfo idProperty = typeof(ProductOption).GetProperty("Id");
+                        idProperty.SetValue(productOption, Guid.Parse(rdr["Id"].ToString()));
+
+                        PropertyInfo productIdProperty = typeof(ProductOption).GetProperty("ProductId");
+                        productIdProperty.SetValue(productOption, Guid.Parse(rdr["ProductId"].ToString()));
+
+                        items.Add(productOption);
                     }
                 }
             }

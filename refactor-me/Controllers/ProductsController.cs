@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Net;
 using System.Web.Http;
-using refactor_me.Models;
 using RefactorMe.Core.External.Repositories;
 using RefactorMe.Infrastructure.Repositories;
+using System.Linq;
+using RefactorMe.Core.DomainModels;
 
 namespace RefactorMe.Controllers
 {
@@ -41,7 +42,7 @@ namespace RefactorMe.Controllers
         [HttpGet]
         public object GetProduct(Guid id)
         {
-            Core.DomainModels.Product product = ProductRepository.GetById(id);
+            Product product = ProductRepository.GetById(id);
             if (product == null)
                 return NotFound();
 
@@ -59,9 +60,9 @@ namespace RefactorMe.Controllers
 
         [Route("{id}")]
         [HttpPut]
-        public IHttpActionResult Update(Guid id, Core.DomainModels.Product product)
+        public IHttpActionResult Update(Guid id, Product product)
         {
-            Core.DomainModels.Product existingProduct = ProductRepository.GetById(id);
+            Product existingProduct = ProductRepository.GetById(id);
             if(existingProduct == null)
             {
                 return BadRequest();
@@ -81,7 +82,7 @@ namespace RefactorMe.Controllers
         [HttpDelete]
         public IHttpActionResult Delete(Guid id)
         {
-            Core.DomainModels.Product existingProduct = ProductRepository.GetById(id);
+            Product existingProduct = ProductRepository.GetById(id);
             if (existingProduct == null)
             {
                 return BadRequest();
@@ -94,50 +95,82 @@ namespace RefactorMe.Controllers
 
         [Route("{productId}/options")]
         [HttpGet]
-        public ProductOptions GetOptions(Guid productId)
+        public object GetOptions(Guid productId)
         {
-            return new ProductOptions(productId);
+            Product product = ProductRepository.GetById(productId, includeOptions: true);
+            if (product == null)
+                return NotFound();
+
+            return product.Options;
         }
 
         [Route("{productId}/options/{id}")]
         [HttpGet]
-        public ProductOption GetOption(Guid productId, Guid id)
+        public object GetOption(Guid productId, Guid id)
         {
-            var option = new ProductOption(id);
-            if (option.IsNew)
-                throw new HttpResponseException(HttpStatusCode.NotFound);
+            Product product = ProductRepository.GetById(productId, includeOptions: true);
+            if (product == null || (product != null && !product.Options.Any(x => x.Id == id)))
+                return NotFound();
 
-            return option;
+            return product.Options.Single(x => x.Id == id);
         }
 
         [Route("{productId}/options")]
         [HttpPost]
-        public void CreateOption(Guid productId, ProductOption option)
+        public IHttpActionResult CreateOption(Guid productId, ProductOption option)
         {
-            option.ProductId = productId;
-            option.Save();
-        }
+            Product existingProduct = ProductRepository.GetById(productId, includeOptions: true);
+            if (existingProduct == null)
+            {
+                return BadRequest();
+            }
 
-        [Route("{productId}/options/{id}")]
-        [HttpPut]
-        public void UpdateOption(Guid id, ProductOption option)
-        {
-            var orig = new ProductOption(id)
+            ProductOption newOption = new ProductOption(existingProduct)
             {
                 Name = option.Name,
                 Description = option.Description
             };
+            existingProduct.AddOption(newOption);
 
-            if (!orig.IsNew)
-                orig.Save();
+            ProductRepository.Update(existingProduct);
+
+            return Created("", option);
+        }
+
+        [Route("{productId}/options/{id}")]
+        [HttpPut]
+        public IHttpActionResult UpdateOption(Guid productId, Guid id, ProductOption option)
+        {
+            Product existingProduct = ProductRepository.GetById(productId, includeOptions: true);
+            if (existingProduct == null || (existingProduct != null && !existingProduct.Options.Any(x => x.Id == id)))
+            {
+                return BadRequest();
+            }
+            ProductOption existingProductOption = existingProduct.Options.Single(x => x.Id == id);
+            existingProductOption.Name = option.Name;
+            existingProductOption.Description = option.Description;
+
+            ProductRepository.Update(existingProduct);
+
+            return Ok();
         }
 
         [Route("{productId}/options/{id}")]
         [HttpDelete]
-        public void DeleteOption(Guid id)
+        public IHttpActionResult DeleteOption(Guid productId, Guid id)
         {
-            var opt = new ProductOption(id);
-            opt.Delete();
+            Product existingProduct = ProductRepository.GetById(productId, includeOptions: true);
+            if (existingProduct == null || (existingProduct != null && !existingProduct.Options.Any(x => x.Id == id)))
+            {
+                return BadRequest();
+            }
+
+            ProductOption existingProductOption = existingProduct.Options.Single(x => x.Id == id);
+            existingProduct.RemoveOption(existingProductOption);
+
+            ProductRepository.Update(existingProduct);
+
+            return Ok();
         }
     }
 }

@@ -8,7 +8,7 @@ namespace RefactorMe.Core.External.Repositories
     {
         IEnumerable<Product> GetAll();
         IEnumerable<Product> GetByName(string name);
-        Product GetById(Guid id);
+        Product GetById(Guid id, bool includeOptions = false);
         void Create(Product product);
         void Update(Product product);
         void Delete(Guid id);
