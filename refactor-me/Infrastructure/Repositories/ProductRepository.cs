@@ -58,49 +58,6 @@ namespace RefactorMe.Infrastructure.Repositories
             ManageProductOptions(product);
         }
 
-        private void ManageProductOptions(Product product)
-        {
-            if (product.Options != null && product.Options.Any())
-            {
-                foreach (ProductOption option in product.Options)
-                {
-                    string statement = null;
-                    //delete option, if option has set IsDeleted = true
-                    if (option.IsDeleted)
-                    {
-                        statement = $"delete from productoption where id = '{option.Id}'";
-                    }
-                    else
-                    {
-                        IEnumerable<ProductOption> options = GetProductOptionsByQuery($"select * from productoption where id = '{option.Id}'");
-                        if (options == null || (options.Count() == 0))
-                        {
-                            //if it's not exists, insert
-                            statement = $"insert into productoption (id, productid, name, description) " +
-                                        $"values ('{option.Id}', '{option.ProductId}', '{option.Name}', '{option.Description}')";
-                        }
-                        else
-                        {
-                            //if it's exists and name/description are being changed, update it
-                            ProductOption existingOption = options.Single();
-                            if ((option.Name != null && !option.Name.Equals(existingOption.Name))
-                                || option.Description != null && !option.Description.Equals(existingOption.Description))
-                            {
-                                string optionName = option.Name != null && !option.Name.Equals(existingOption.Name) ? option.Name : existingOption.Name;
-                                string optionDescription = option.Description != null && !option.Description.Equals(existingOption.Description) ? option.Description : existingOption.Description;
-                                statement = $"update productoption set name = '{optionName}', description = '{optionDescription}' where id = '{option.Id}'";
-                            }
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(statement))
-                    {
-                        ExecuteCommand(statement);
-                    }
-                }
-            }
-        }
-
         public void Delete(Guid id)
         {
             string statement = $"delete from product where id = '{id}'";
@@ -179,6 +136,49 @@ namespace RefactorMe.Infrastructure.Repositories
                 {
                     conn.Open();
                     cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        private void ManageProductOptions(Product product)
+        {
+            if (product.Options != null && product.Options.Any())
+            {
+                foreach (ProductOption option in product.Options)
+                {
+                    string statement = null;
+                    //delete option, if option has set IsDeleted = true
+                    if (option.IsDeleted)
+                    {
+                        statement = $"delete from productoption where id = '{option.Id}'";
+                    }
+                    else
+                    {
+                        IEnumerable<ProductOption> options = GetProductOptionsByQuery($"select * from productoption where id = '{option.Id}'");
+                        if (options == null || (options.Count() == 0))
+                        {
+                            //if it's not exists, insert
+                            statement = $"insert into productoption (id, productid, name, description) " +
+                                        $"values ('{option.Id}', '{option.ProductId}', '{option.Name}', '{option.Description}')";
+                        }
+                        else
+                        {
+                            //if it's exists and name/description are being changed, update it
+                            ProductOption existingOption = options.Single();
+                            if ((option.Name != null && !option.Name.Equals(existingOption.Name))
+                                || option.Description != null && !option.Description.Equals(existingOption.Description))
+                            {
+                                string optionName = option.Name != null && !option.Name.Equals(existingOption.Name) ? option.Name : existingOption.Name;
+                                string optionDescription = option.Description != null && !option.Description.Equals(existingOption.Description) ? option.Description : existingOption.Description;
+                                statement = $"update productoption set name = '{optionName}', description = '{optionDescription}' where id = '{option.Id}'";
+                            }
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(statement))
+                    {
+                        ExecuteCommand(statement);
+                    }
                 }
             }
         }

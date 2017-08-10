@@ -1,26 +1,40 @@
-﻿using System;
+﻿using RefactorMe.Core.Command;
+using RefactorMe.Core.DomainModels;
+using RefactorMe.Core.Query;
+using RefactorMe.Core.Query.Queries;
+using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Web.Http;
-using RefactorMe.Core.External.Repositories;
-using RefactorMe.Infrastructure.Repositories;
-using System.Linq;
-using RefactorMe.Core.DomainModels;
 
 namespace RefactorMe.Controllers
 {
     [RoutePrefix("products")]
     public class ProductsController : ApiController
     {
-        private IProductRepository productRepository;
-        public IProductRepository ProductRepository
+        private QueryHandlerFactory queryHandlerFactory;
+        private QueryHandlerFactory QueryHandlerFactory
         {
             get
             {
-                if (productRepository == null)
+                if (queryHandlerFactory == null)
                 {
-                    productRepository = new ProductRepository();
+                    queryHandlerFactory = new QueryHandlerFactory();
                 }
-                return productRepository;
+                return queryHandlerFactory;
+            }
+        }
+
+        private CommandHandlerFactory commandHandlerFactory;
+        private CommandHandlerFactory CommandHandlerFactory
+        {
+            get
+            {
+                if (commandHandlerFactory == null)
+                {
+                    commandHandlerFactory = new CommandHandlerFactory();
+                }
+                return commandHandlerFactory;
             }
         }
 
@@ -28,149 +42,152 @@ namespace RefactorMe.Controllers
         [HttpGet]
         public object GetAll()
         {
-            return new { Items = ProductRepository.GetAll() };
+            IQueryHandler<GetProductsQuery, IEnumerable<Product>> queryHandler = QueryHandlerFactory.Create<GetProductsQuery, IEnumerable<Product>>();
+            return new { Items = queryHandler.Handle(new GetProductsQuery()) };
         }
 
         [Route]
         [HttpGet]
         public object SearchByName(string name)
         {
-            return new { Items = ProductRepository.GetByName(name) };
+            IQueryHandler<GetProductsQuery, IEnumerable<Product>> queryHandler = QueryHandlerFactory.Create<GetProductsQuery, IEnumerable<Product>>();
+            return new { Items = queryHandler.Handle(new GetProductsQuery() { Name = name }) };
         }
 
         [Route("{id}")]
         [HttpGet]
         public object GetProduct(Guid id)
         {
-            Product product = ProductRepository.GetById(id);
+            IQueryHandler<GetProductQuery, Product> queryHandler = QueryHandlerFactory.Create<GetProductQuery, Product>();
+            Product product = queryHandler.Handle(new GetProductQuery { Id = id });
             if (product == null)
+            {
                 return NotFound();
+            }
 
             return product;
         }
 
         [Route]
         [HttpPost]
-        public IHttpActionResult Create(Core.DomainModels.Product product)
+        public IHttpActionResult Create(CreateProductCommand command)
         {
-            ProductRepository.Create(product);
-
-            return Created("", product);
+            ICommandHandler<CreateProductCommand> commandHandler = CommandHandlerFactory.Create<CreateProductCommand>();
+            ICommandResult commandResult = commandHandler.Execute(command);
+            if (commandResult.IsCompleted)
+            {
+                return Created("", (commandResult as CommandModelResult<Product>).Model);
+            }
+            else
+            {
+                return Content(HttpStatusCode.BadRequest, commandResult.ErrorMessages);
+            }
         }
 
         [Route("{id}")]
         [HttpPut]
-        public IHttpActionResult Update(Guid id, Product product)
+        public IHttpActionResult Update(Guid id, UpdateProductCommand command)
         {
-            Product existingProduct = ProductRepository.GetById(id);
-            if(existingProduct == null)
+            ICommandHandler<UpdateProductCommand> commandHandler = CommandHandlerFactory.Create<UpdateProductCommand>();
+            command.Id = id;
+            ICommandResult commandResult = commandHandler.Execute(command);
+            if (commandResult.IsCompleted)
             {
-                return BadRequest();
+                return Ok();
             }
-
-            existingProduct.Name = product.Name;
-            existingProduct.Description = product.Description;
-            existingProduct.Price = product.Price;
-            existingProduct.DeliveryPrice = product.DeliveryPrice;
-
-            ProductRepository.Update(existingProduct);
-
-            return Ok();
+            else
+            {
+                return Content(HttpStatusCode.BadRequest, commandResult.ErrorMessages);
+            }
         }
 
         [Route("{id}")]
         [HttpDelete]
         public IHttpActionResult Delete(Guid id)
         {
-            Product existingProduct = ProductRepository.GetById(id);
-            if (existingProduct == null)
+            ICommandHandler<DeleteProductCommand> commandHandler = CommandHandlerFactory.Create<DeleteProductCommand>();
+            ICommandResult commandResult = commandHandler.Execute(new DeleteProductCommand { Id = id });
+            if (commandResult.IsCompleted)
             {
-                return BadRequest();
+                return StatusCode(HttpStatusCode.NoContent);
             }
-
-            ProductRepository.Delete(id);
-
-            return StatusCode(HttpStatusCode.NoContent);
+            else
+            {
+                return Content(HttpStatusCode.BadRequest, commandResult.ErrorMessages);
+            }
         }
 
         [Route("{productId}/options")]
         [HttpGet]
         public object GetOptions(Guid productId)
         {
-            Product product = ProductRepository.GetById(productId, includeOptions: true);
-            if (product == null)
-                return NotFound();
-
-            return product.Options;
+            IQueryHandler<GetProductOptionsQuery, IEnumerable<ProductOption>> queryHandler = QueryHandlerFactory.Create<GetProductOptionsQuery, IEnumerable<ProductOption>>();
+            return new { Items = queryHandler.Handle(new GetProductOptionsQuery { ProductId = productId }) };
         }
 
         [Route("{productId}/options/{id}")]
         [HttpGet]
         public object GetOption(Guid productId, Guid id)
         {
-            Product product = ProductRepository.GetById(productId, includeOptions: true);
-            if (product == null || (product != null && !product.Options.Any(x => x.Id == id)))
+            IQueryHandler<GetProductOptionQuery, ProductOption> queryHandler = QueryHandlerFactory.Create<GetProductOptionQuery, ProductOption>();
+            ProductOption productOption = queryHandler.Handle(new GetProductOptionQuery { ProductId = productId, Id = id });
+            if (productOption == null)
+            {
                 return NotFound();
+            }
 
-            return product.Options.Single(x => x.Id == id);
+            return productOption;
         }
 
         [Route("{productId}/options")]
         [HttpPost]
-        public IHttpActionResult CreateOption(Guid productId, ProductOption option)
+        public IHttpActionResult CreateOption(Guid productId, CreateProductOptionCommand command)
         {
-            Product existingProduct = ProductRepository.GetById(productId, includeOptions: true);
-            if (existingProduct == null)
+            ICommandHandler<CreateProductOptionCommand> commandHandler = CommandHandlerFactory.Create<CreateProductOptionCommand>();
+            command.ProductId = productId;
+            ICommandResult commandResult = commandHandler.Execute(command);
+            if (commandResult.IsCompleted)
             {
-                return BadRequest();
+                return Created("", (commandResult as CommandModelResult<ProductOption>).Model);
             }
-
-            ProductOption newOption = new ProductOption(existingProduct)
+            else
             {
-                Name = option.Name,
-                Description = option.Description
-            };
-            existingProduct.AddOption(newOption);
-
-            ProductRepository.Update(existingProduct);
-
-            return Created("", option);
+                return Content(HttpStatusCode.BadRequest, commandResult.ErrorMessages);
+            }
         }
 
         [Route("{productId}/options/{id}")]
         [HttpPut]
-        public IHttpActionResult UpdateOption(Guid productId, Guid id, ProductOption option)
+        public IHttpActionResult UpdateOption(Guid productId, Guid id, UpdateProductOptionCommand command)
         {
-            Product existingProduct = ProductRepository.GetById(productId, includeOptions: true);
-            if (existingProduct == null || (existingProduct != null && !existingProduct.Options.Any(x => x.Id == id)))
+            ICommandHandler<UpdateProductOptionCommand> commandHandler = CommandHandlerFactory.Create<UpdateProductOptionCommand>();
+            command.ProductId = productId;
+            command.Id = id;
+            ICommandResult commandResult = commandHandler.Execute(command);
+            if (commandResult.IsCompleted)
             {
-                return BadRequest();
+                return Ok();
             }
-            ProductOption existingProductOption = existingProduct.Options.Single(x => x.Id == id);
-            existingProductOption.Name = option.Name;
-            existingProductOption.Description = option.Description;
-
-            ProductRepository.Update(existingProduct);
-
-            return Ok();
+            else
+            {
+                return Content(HttpStatusCode.BadRequest, commandResult.ErrorMessages);
+            }
         }
 
         [Route("{productId}/options/{id}")]
         [HttpDelete]
         public IHttpActionResult DeleteOption(Guid productId, Guid id)
         {
-            Product existingProduct = ProductRepository.GetById(productId, includeOptions: true);
-            if (existingProduct == null || (existingProduct != null && !existingProduct.Options.Any(x => x.Id == id)))
+            ICommandHandler<DeleteProductOptionCommand> commandHandler = CommandHandlerFactory.Create<DeleteProductOptionCommand>();
+            ICommandResult commandResult = commandHandler.Execute(new DeleteProductOptionCommand { ProductId = productId, Id = id });
+            if (commandResult.IsCompleted)
             {
-                return BadRequest();
+                return StatusCode(HttpStatusCode.NoContent);
             }
-
-            ProductOption existingProductOption = existingProduct.Options.Single(x => x.Id == id);
-            existingProduct.RemoveOption(existingProductOption);
-
-            ProductRepository.Update(existingProduct);
-
-            return Ok();
+            else
+            {
+                return Content(HttpStatusCode.BadRequest, commandResult.ErrorMessages);
+            }
         }
     }
 }

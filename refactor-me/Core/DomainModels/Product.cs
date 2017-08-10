@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -17,7 +18,9 @@ namespace RefactorMe.Core.DomainModels
         public decimal DeliveryPrice { get; set; }
 
         private IList<ProductOption> options { get; set; }
-        public IEnumerable<ProductOption> Options { get { return (options != null) ? options.Where(x => !x.IsDeleted) : new List<ProductOption>(); } }
+
+        [JsonIgnore]
+        public IEnumerable<ProductOption> Options { get { return (options != null) ? options : new List<ProductOption>(); } }
 
         public Product()
         {
@@ -27,7 +30,7 @@ namespace RefactorMe.Core.DomainModels
 
         public void AddOption(ProductOption option)
         {
-            if(!options.Any(x => x.Id == option.Id))
+            if (!options.Any(x => x.Id == option.Id))
             {
                 options.Add(option);
             }
